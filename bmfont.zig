@@ -29,10 +29,6 @@ pub const TextCommon = struct {
     blue: u8,
 };
 
-pub const Pages = struct {
-    names: std.ArrayList([]u8),
-};
-
 pub const TextChar = packed struct {
     id: u32,
     x: u16,
@@ -56,16 +52,16 @@ pub const FontInfo = struct {
     allocator: *std.mem.Allocator,
     info: TextInfo,
     common: TextCommon,
-    pages: Pages,
+    pages: [][]u8,
     chars: []TextChar,
     kerning_pairs: []KerningPair,
 
     pub fn deinit(self: @This()) void {
         self.allocator.free(self.info.font_name);
-        for (self.pages.names.items) |name| {
-            self.allocator.free(name);
+        for (self.pages) |s| {
+            self.allocator.free(s);
         }
-        self.pages.names.deinit();
+        self.allocator.free(self.pages);
         self.allocator.free(self.chars);
         self.allocator.free(self.kerning_pairs);
     }
@@ -163,23 +159,28 @@ pub fn loadBinary(stream: anytype, allocator: *std.mem.Allocator) !FontInfo {
         return LoadError.UnexpectedBlock;
     }
 
-    var pages = Pages{ .names = std.ArrayList([]u8).init(allocator) };
+    var pages: ?[][]u8 = null;
     errdefer {
-        for (pages.names.items) |s| {
-            allocator.free(s);
+        if (pages != null) {
+            for (pages.?) |s| {
+                allocator.free(s);
+            }
+            allocator.free(pages.?);
         }
-        pages.names.deinit();
     }
 
     {
         const block_size = try stream.readIntNative(i32); // skip block size
         var remaining: usize = @intCast(usize, block_size);
 
+        var strings = std.ArrayList([]u8).init(allocator);
+
         while (remaining > 0) {
             var s: []u8 = try stream.readUntilDelimiterAlloc(allocator, 0, k_maxFontNameLength);
             remaining -= s.len + 1;
-            try pages.names.append(s);
+            try strings.append(s);
         }
+        pages = strings.toOwnedSlice();
     }
 
     tag = @intToEnum(BlockTag, try stream.readByte());
@@ -236,7 +237,7 @@ pub fn loadBinary(stream: anytype, allocator: *std.mem.Allocator) !FontInfo {
         .allocator = allocator,
         .info = text_info,
         .common = text_common,
-        .pages = pages,
+        .pages = pages.?,
         .chars = chars.?,
         .kerning_pairs = kerning_pairs.?,
     };
