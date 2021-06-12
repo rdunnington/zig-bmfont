@@ -1,4 +1,5 @@
 const std = @import("std");
+const expect = std.testing.expect;
 
 pub const TextInfo = struct {
     font_size: i16,
@@ -247,10 +248,20 @@ test "single page no kerning" {
     var allocator = std.testing.allocator;
     var info: FontInfo = try loadBinaryFromPath("test/consolas.fnt", allocator);
     defer info.deinit();
+
+    try expect(std.mem.eql(u8, info.info.font_name, "Consolas"));
+    try expect(std.mem.eql(u8, info.pages[0], "consolas_0.png"));
 }
 
 test "multi page with kerning" {
     var allocator = std.testing.allocator;
     var info: FontInfo = try loadBinaryFromPath("test/dejavu.fnt", allocator);
     defer info.deinit();
+
+    try expect(std.mem.eql(u8, info.info.font_name, "DejaVu Sans"));
+    try expect(std.mem.eql(u8, info.pages[0], "dejavu_0.png"));
+    try expect(std.mem.eql(u8, info.pages[1], "dejavu_1.png"));
+    try expect(std.mem.eql(u8, info.pages[2], "dejavu_2.png"));
+    try expect(std.mem.eql(u8, info.pages[3], "dejavu_3.png"));
+    try expect(std.mem.eql(u8, info.pages[4], "dejavu_4.png"));
 }
