@@ -1,5 +1,4 @@
 const std = @import("std");
-// const math = @import("math");
 
 pub const TextInfo = struct {
     font_size: i16,
@@ -88,10 +87,7 @@ const BlockTag = enum(u8) {
     KerningPairs,
 };
 
-// TODO change this to use a stream
-// TODO provice loadFromPath, loadFromAbsolutePath as alternate methods for convenience
-pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
-    // var file = try std.fs.openFileAbsolute(filepath, .{
+pub fn loadBinaryFromPath(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
     var file = try std.fs.cwd().openFile(filepath, .{
         .read = true,
     });
@@ -101,8 +97,10 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
     defer allocator.free(data);
 
     var stream = std.io.fixedBufferStream(data);
+    return loadBinary(stream.reader(), allocator);
+}
 
-    // header and version checks
+pub fn loadBinary(stream: anytype, allocator: *std.mem.Allocator) !FontInfo {
     {
         var header = [_]u8{0} ** 3;
         _ = try stream.read(header[0..]);
@@ -110,57 +108,57 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
             return LoadError.BadHeader;
         }
 
-        const version = try stream.reader().readByte();
+        const version = try stream.readByte();
         if (version != 3) {
             std.debug.print("bmfont load expected version 3, got version {}\n", .{version});
             return LoadError.IncompatibleVersion;
         }
     }
 
-    var tag: BlockTag = @intToEnum(BlockTag, try stream.reader().readByte());
+    var tag: BlockTag = @intToEnum(BlockTag, try stream.readByte());
     if (tag != .Info) {
         return LoadError.UnexpectedBlock;
     }
-    _ = try stream.reader().readIntNative(i32); // skip block size
+    _ = try stream.readIntNative(i32); // skip block size
 
     const k_maxFontNameLength = 256;
     const text_info = TextInfo{
-        .font_size = try stream.reader().readIntNative(i16),
-        .flags = try stream.reader().readIntNative(u8),
-        .charset = try stream.reader().readIntNative(u8),
-        .stretch_h = try stream.reader().readIntNative(u16),
-        .aa = try stream.reader().readIntNative(u8),
-        .padding_up = try stream.reader().readIntNative(u8),
-        .padding_right = try stream.reader().readIntNative(u8),
-        .padding_down = try stream.reader().readIntNative(u8),
-        .padding_left = try stream.reader().readIntNative(u8),
-        .spacing_horiz = try stream.reader().readIntNative(u8),
-        .spacing_vert = try stream.reader().readIntNative(u8),
-        .outline = try stream.reader().readIntNative(u8),
-        .font_name = try stream.reader().readUntilDelimiterAlloc(allocator, 0, k_maxFontNameLength),
+        .font_size = try stream.readIntNative(i16),
+        .flags = try stream.readIntNative(u8),
+        .charset = try stream.readIntNative(u8),
+        .stretch_h = try stream.readIntNative(u16),
+        .aa = try stream.readIntNative(u8),
+        .padding_up = try stream.readIntNative(u8),
+        .padding_right = try stream.readIntNative(u8),
+        .padding_down = try stream.readIntNative(u8),
+        .padding_left = try stream.readIntNative(u8),
+        .spacing_horiz = try stream.readIntNative(u8),
+        .spacing_vert = try stream.readIntNative(u8),
+        .outline = try stream.readIntNative(u8),
+        .font_name = try stream.readUntilDelimiterAlloc(allocator, 0, k_maxFontNameLength),
     };
     errdefer allocator.free(text_info.font_name);
 
-    tag = @intToEnum(BlockTag, try stream.reader().readByte());
+    tag = @intToEnum(BlockTag, try stream.readByte());
     if (tag != .Common) {
         return LoadError.UnexpectedBlock;
     }
-    _ = try stream.reader().readIntNative(i32); // skip block size
+    _ = try stream.readIntNative(i32); // skip block size
 
     const text_common = TextCommon{
-        .line_height = try stream.reader().readIntNative(u16),
-        .base = try stream.reader().readIntNative(u16),
-        .scale_w = try stream.reader().readIntNative(u16),
-        .scale_h = try stream.reader().readIntNative(u16),
-        .pages = try stream.reader().readIntNative(u16),
-        .flags = try stream.reader().readIntNative(u8),
-        .alpha = try stream.reader().readIntNative(u8),
-        .red = try stream.reader().readIntNative(u8),
-        .green = try stream.reader().readIntNative(u8),
-        .blue = try stream.reader().readIntNative(u8),
+        .line_height = try stream.readIntNative(u16),
+        .base = try stream.readIntNative(u16),
+        .scale_w = try stream.readIntNative(u16),
+        .scale_h = try stream.readIntNative(u16),
+        .pages = try stream.readIntNative(u16),
+        .flags = try stream.readIntNative(u8),
+        .alpha = try stream.readIntNative(u8),
+        .red = try stream.readIntNative(u8),
+        .green = try stream.readIntNative(u8),
+        .blue = try stream.readIntNative(u8),
     };
 
-    tag = @intToEnum(BlockTag, try stream.reader().readByte());
+    tag = @intToEnum(BlockTag, try stream.readByte());
     if (tag != .Pages) {
         return LoadError.UnexpectedBlock;
     }
@@ -174,17 +172,17 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
     }
 
     {
-        const block_size = try stream.reader().readIntNative(i32); // skip block size
+        const block_size = try stream.readIntNative(i32); // skip block size
         var remaining: usize = @intCast(usize, block_size);
 
         while (remaining > 0) {
-            var s: []u8 = try stream.reader().readUntilDelimiterAlloc(allocator, 0, k_maxFontNameLength);
+            var s: []u8 = try stream.readUntilDelimiterAlloc(allocator, 0, k_maxFontNameLength);
             remaining -= s.len + 1;
             try pages.names.append(s);
         }
     }
 
-    tag = @intToEnum(BlockTag, try stream.reader().readByte());
+    tag = @intToEnum(BlockTag, try stream.readByte());
     if (tag != .Chars) {
         return LoadError.UnexpectedBlock;
     }
@@ -197,7 +195,7 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
     }
 
     {
-        var block_size = try stream.reader().readIntNative(i32); // skip block size
+        var block_size = try stream.readIntNative(i32); // skip block size
         const struct_size = @sizeOf(TextChar);
         comptime {
             std.debug.assert(@sizeOf(TextChar) == 20);
@@ -206,7 +204,7 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
 
         chars = try allocator.alloc(TextChar, count);
 
-        try stream.reader().readNoEof(std.mem.sliceAsBytes(chars.?));
+        try stream.readNoEof(std.mem.sliceAsBytes(chars.?));
     }
 
     var kerning_pairs: ?[]KerningPair = null;
@@ -216,9 +214,9 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
         }
     }
 
-    tag = @intToEnum(BlockTag, stream.reader().readByte() catch 0);
+    tag = @intToEnum(BlockTag, stream.readByte() catch 0);
     if (tag == .KerningPairs) {
-        var block_size = try stream.reader().readIntNative(i32); // skip block size
+        var block_size = try stream.readIntNative(i32); // skip block size
         const struct_size = @sizeOf(KerningPair);
         comptime {
             std.debug.assert(@sizeOf(KerningPair) == 10);
@@ -227,7 +225,7 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
 
         kerning_pairs = try allocator.alloc(KerningPair, count);
 
-        try stream.reader().readNoEof(std.mem.sliceAsBytes(kerning_pairs.?));
+        try stream.readNoEof(std.mem.sliceAsBytes(kerning_pairs.?));
     }
 
     if (kerning_pairs == null) {
@@ -246,12 +244,12 @@ pub fn load(filepath: []const u8, allocator: *std.mem.Allocator) !FontInfo {
 
 test "single page no kerning" {
     var allocator = std.testing.allocator;
-    var info: FontInfo = try load("test/consolas.fnt", allocator);
+    var info: FontInfo = try loadBinaryFromPath("test/consolas.fnt", allocator);
     defer info.deinit();
 }
 
 test "multi page with kerning" {
     var allocator = std.testing.allocator;
-    var info: FontInfo = try load("test/dejavu.fnt", allocator);
+    var info: FontInfo = try loadBinaryFromPath("test/dejavu.fnt", allocator);
     defer info.deinit();
 }
